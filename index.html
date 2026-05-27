@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Все документы в суд!</title>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --card: #ffffff;
+            --text: #212529;
+            --border: #dee2e6;
+            --primary: #2980b9;
+            --primary-hover: #1a5276;
+            --success: #27ae60;
+            --danger: #c0392b;
+            --warning: #f39c12;
+            --shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        [data-theme="dark"] {
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --text: #eaeaea;
+            --border: #3a3a5a;
+            --primary: #4da6ff;
+            --primary-hover: #3d8bfd;
+            --shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 15px;
+            line-height: 1.5;
+            transition: background 0.3s, color 0.3s;
+        }
+        /* Экран обслуживания */
+        .maintenance-screen {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: var(--bg);
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            text-align: center;
+            padding: 20px;
+        }
+        .maintenance-screen.active { display: flex; }
+        .maintenance-content {
+            background: var(--card);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            max-width: 500px;
+        }
+        .maintenance-content h2 {
+            color: var(--warning);
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+        .maintenance-content p {
+            font-size: 18px;
+            color: var(--text);
+            opacity: 0.9;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto 20px;
+            padding: 10px;
+        }
+        h1 {
+            font-size: 28px;
+            color: var(--primary);
+            font-weight: bold;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .btn {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: var(--primary);
+            color: white;
+            transition: background 0.2s;
+            font-weight: 500;
+        }
+        .btn:hover { background: var(--primary-hover); }
+        .btn-danger { background: var(--danger); }
+        .btn-danger:hover { background: #a93226; }
+        .btn-success { background: var(--success); }
+        .btn-success:hover { background: #219653; }
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+        .btn-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            max-width: 1200px;
+            margin: 0 auto 20px;
+        }
+        .search-box input {
+            flex: 1;
+            padding: 15px 20px;
+            font-size: 18px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            background: var(--card);
+            color: var(--text);
+        }
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .stats {
+            max-width: 1200px;
+            margin: 0 auto 15px;
+            display: flex;
+            gap: 15px;
+            font-size: 16px;
+            color: var(--text);
+        }
+        .stat-badge {
+            background: var(--card);
+            padding: 8px 16px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            font-weight: 500;
+        }
+        .table-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--card);
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 17px;
+        }
+        th {
+            background: var(--primary);
+            color: white;
+            padding: 16px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        tr:hover { background: rgba(41, 128, 185, 0.08); }
+        tr.edit-mode {
+            background: rgba(243, 156, 18, 0.15) !important;
+        }
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+        .action-btn {
+            padding: 6px 12px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: var(--primary);
+            color: white;
+        }
+        .action-btn.delete { background: var(--danger); }
+        .action-btn.edit { background: var(--warning); color: #333; }
+        .file-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .file-link:hover { text-decoration: underline; }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+            font-size: 18px;
+        }
+        /* Модальное окно */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: var(--card);
+            padding: 25px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-title {
+            font-size: 22px;
+            margin-bottom: 15px;
+            color: var(--primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        /* Вкладки */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            color: var(--text);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        .tab-btn:hover { color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 16px;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 10px;
+        }
+        /* Админ-панель */
+        .admin-section {
+            margin-bottom: 25px;
+            padding: 15px;
+            background: var(--bg);
+            border-radius: 8px;
+        }
+        .admin-section h3 {
+            margin-bottom: 12px;
+            color: var(--primary);
+            font-size: 18px;
+        }
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+        .toggle-switch input {
+            width: 50px;
+            height: 26px;
+            appearance: none;
+            background: var(--border);
+            border-radius: 13px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle-switch input:checked {
+            background: var(--success);
+        }
+        .toggle-switch input::before {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+        }
+        .toggle-switch input:checked::before {
+            transform: translateX(24px);
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .status-online {
+            background: rgba(39, 174, 96, 0.15);
+            color: var(--success);
+        }
+        .status-offline {
+            background: rgba(192, 57, 43, 0.15);
+            color: var(--danger);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        /* Логи входов */
+        .logs-table {
+            width: 100%;
+            font-size: 14px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .logs-table th, .logs-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        .logs-table th {
+            background: var(--primary);
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        .logs-table tr:hover {
+            background: rgba(41, 128, 185, 0.08);
+        }
+        .log-time {
+            font-size: 12px;
+            color: #666;
+            white-space: nowrap;
+        }
+        [data-theme="dark"] .log-time { color: #aaa; }
+        /* Уведомления */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 14px 24px;
+            background: var(--success);
+            color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 16px;
+            z-index: 2000;
+            animation: slideIn 0.3s ease;
+        }
+        .toast.error { background: var(--danger); }
+        .toast.warning { background: var(--warning); color: #333; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        /* Загрузка */
+        .loading {
+            text-align: center;
+            padding: 30px;
+            font-size: 18px;
+            color: #666;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Адаптив */
+        @media (max-width: 768px) {
+            .header { flex-direction: column; gap: 15px; }
+            .search-box { flex-direction: column; }
+            table { font-size: 15px; }
+            th, td { padding: 10px 8px; }
+            .actions { flex-direction: column; }
+            .tabs { flex-wrap: wrap; }
+            .tab-btn { padding: 10px 16px; font-size: 14px; }
+        }
+        /* Для печати */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; color: black; }
+            .table-container { box-shadow: none; }
+            a { color: black; text-decoration: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Экран обслуживания (показывается если сайт отключен) -->
+<div class="maintenance-screen" id="maintenanceScreen">
+    <div class="maintenance-content">
+        <h2>⚙️ Технические работы</h2>
+        <p>Извините, добавляются новые документы.<br>Пожалуйста, зайдите позже.</p>
+    </div>
+</div>
+
+<!-- Основной контент (скрывается если сайт отключен) -->
+<div id="mainContent">
+
+<div class="header no-print">
+    <h1>⚖️ Все документы в суд!</h1>
+    <div class="controls">
+        <button class="btn btn-outline" onclick="toggleTheme()" title="Сменить тему">🌓</button>
+        <button class="btn btn-success" onclick="exportToCSV()" title="Скачать список">📥 Excel</button>
+        <button class="btn" onclick="window.print()" title="Печать">🖨️</button>
+    </div>
+</div>
+
+<div class="search-box no-print">
+    <input type="text" id="searchInput" placeholder="Поиск по судье: Сафрюк В.В" autocomplete="off">
+    <button class="btn" onclick="performSearch()">🔍 Найти</button>
+    <button class="btn btn-outline" onclick="resetSearch()">Сброс</button>
+    <button class="btn btn-outline" onclick="filterByMonth()">📅 За месяц</button>
+</div>
+
+<div class="stats">
+    <div class="stat-badge">Всего: <span id="totalCount">0</span></div>
+    <div class="stat-badge">Найдено: <span id="foundCount">0</span></div>
+    <div class="stat-badge">Судей: <span id="judgesCount">0</span></div>
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>📄 Название</th>
+                <th>👨‍⚖️ Судья</th>
+                <th>📁 Файл</th>
+                <th>📅 Дата</th>
+                <th class="no-print">⚙️ Действия</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            <tr><td colspan="5" class="loading"><span class="loading-spinner"></span>Загрузка документов...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+</div> <!-- /#mainContent -->
+
+<!-- Модальное окно с вкладками (F2) -->
+<div class="modal" id="mainModal">
+    <div class="modal-content">
+        <div class="modal-title">
+            <span id="modalTitle">📋 Управление</span>
+            <button class="btn btn-outline" onclick="closeModal()" style="padding:6px 12px;font-size:14px;">✕</button>
+        </div>
+        
+        <!-- Вкладки -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('addDoc')">➕ Добавить документ</button>
+            <button class="tab-btn" onclick="switchTab('admin')">⚙️ Админ-панель</button>
+        </div>
+        
+        <!-- Вкладка: Добавить документ -->
+        <div class="tab-content active" id="tab-addDoc">
+            <input type="hidden" id="editId">
+            <div class="form-group">
+                <label>Название документа *</label>
+                <input type="text" id="docTitle" placeholder="Исковое заявление о взыскании...">
+            </div>
+            <div class="form-group">
+                <label>Судья *</label>
+                <input type="text" id="docJudge" placeholder="Сафрюк В.В" list="judgesList">
+                <datalist id="judgesList"></datalist>
+            </div>
+            <div class="form-group" id="fileGroup">
+                <label>Файл Word (.doc/.docx) *</label>
+                <input type="file" id="docFile" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            </div>
+            <div id="modalStatus" style="margin: 10px 0; font-weight: 500; min-height: 20px;"></div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeModal()">Отмена</button>
+                <button class="btn btn-success" onclick="saveDocument()">💾 Сохранить</button>
+            </div>
+        </div>
+        
+        <!-- Вкладка: Админ-панель -->
+        <div class="tab-content" id="tab-admin">
+            <!-- Статус сайта -->
+            <div class="admin-section">
+                <h3>🌐 Статус сайта</h3>
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                    <div>
+                        <span class="status-badge" id="siteStatusBadge">
+                            <span class="status-dot"></span>
+                            <span id="siteStatusText">Загрузка...</span>
+                        </span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="siteEnabledToggle" onchange="toggleSiteStatus()">
+                        <span style="font-size:15px;font-weight:500;">Сайт включён</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Логи входов -->
+            <div class="admin-section">
+                <h3>👁️ Входы на сайт <span id="logCount" style="font-size:13px;color:#666;font-weight:normal;margin-left:5px;"></span></h3>
+                <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-outline" onclick="refreshLogins()" style="padding:8px 16px;font-size:14px;">🔄 Обновить</button>
+                    <button class="btn btn-danger" onclick="clearLogins()" style="padding:8px 16px;font-size:14px;">🗑️ Очистить</button>
+                </div>
+                <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
+                    <table class="logs-table">
+                        <thead>
+                            <tr>
+                                <th>Время</th>
+                                <th>IP</th>
+                                <th>Устройство</th>
+                            </tr>
+                        </thead>
+                        <tbody id="loginsTableBody">
+                            <tr><td colspan="3" style="text-align:center;padding:15px;">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeModal()">Закрыть</button>
+            </div>
+        </div>
+        
+    </div>
+</div>
+
+<!-- Уведомления -->
+<div id="toastContainer"></div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+
+<script>
+    // ================= НАСТРОЙКИ FIREBASE =================
+    const firebaseConfig = {
+        apiKey: "AIzaSyD_PLACEHOLDER",
+        authDomain: "wildberies-99e8b.firebaseapp.com",
+        databaseURL: "https://wildberies-99e8b-default-rtdb.firebaseio.com",
+        projectId: "wildberies-99e8b",
+        storageBucket: "wildberies-99e8b.appspot.com",
+        messagingSenderId: "123456789",
+        appId: "1:123456789:web:abcdef"
+    };
+    // =====================================================
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const storage = firebase.storage();
+    const docsRef = db.ref('documents');
+    const statusRef = db.ref('siteStatus');
+    const loginsRef = db.ref('logins');
+    const storageRef = storage.ref('documents');
+
+    // Глобальные переменные
+    let allDocs = [];
+    let siteEnabled = true;
+    let isDarkMode = localStorage.getItem('theme') === 'dark';
+
+    // ================= ИНИЦИАЛИЗАЦИЯ =================
+    document.addEventListener('DOMContentLoaded', async () => {
+        if (isDarkMode) document.documentElement.setAttribute('data-theme', 'dark');
+        
+        // Инициализация статуса сайта
+        await initSiteStatus();
+        
+        // Если сайт выключен — показываем экран обслуживания
+        if (!siteEnabled) {
+            document.getElementById('maintenanceScreen').classList.add('active');
+            document.getElementById('mainContent').style.display = 'none';
+        } else {
+            loadDocuments();
+        }
+        
+        setupHotkeys();
+        updateJudgesDatalist();
+        
+        // Логирование входа (только если сайт включен)
+        if (siteEnabled) {
+            logUserVisit();
+        }
+    });
+
+    // ================= СТАТУС САЙТА =================
+    async function initSiteStatus() {
+        try {
+            const snapshot = await statusRef.once('value');
+            const data = snapshot.val();
+            if (data && typeof data.enabled === 'boolean') {
+                siteEnabled = data.enabled;
+            } else {
+                // Создаём дефолтное значение
+                await statusRef.set({ enabled: true, updatedAt: Date.now() });
+                siteEnabled = true;
+            }
+            updateSiteStatusUI();
+            
+            // Подписка на изменения в реальном времени
+            statusRef.on('value', snap => {
+                const val = snap.val();
+                if (val && typeof val.enabled === 'boolean') {
+                    siteEnabled = val.enabled;
+                    updateSiteStatusUI();
+                    // Если только что выключили — показываем экран обслуживания
+                    if (!siteEnabled) {
+                        document.getElementById('maintenanceScreen').classList.add('active');
+                        document.getElementById('mainContent').style.display = 'none';
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Ошибка инициализации статуса:', err);
+            siteEnabled = true;
+            updateSiteStatusUI();
+        }
+    }
+
+    function updateSiteStatusUI() {
+        const badge = document.getElementById('siteStatusBadge');
+        const text = document.getElementById('siteStatusText');
+        const toggle = document.getElementById('siteEnabledToggle');
+        
+        if (siteEnabled) {
+            badge.className = 'status-badge status-online';
+            text.textContent = 'Онлайн';
+            toggle.checked = true;
+        } else {
+            badge.className = 'status-badge status-offline';
+            text.textContent = 'На обслуживании';
+            toggle.checked = false;
+        }
+    }
+
+    async function toggleSiteStatus() {
+        const newState = document.getElementById('siteEnabledToggle').checked;
+        try {
+            await statusRef.update({
+                enabled: newState,
+                updatedAt: Date.now(),
+                updatedBy: 'admin'
+            });
+            showToast(newState ? '✅ Сайт включён' : '🚫 Сайт отключён');
+        } catch (err) {
+            console.error(err);
+            showToast('Ошибка обновления статуса', 'error');
+            // Откатываем переключатель
+            document.getElementById('siteEnabledToggle').checked = !newState;
+        }
+    }
+
+    // ================= ЛОГИРОВАНИЕ ВХОДОВ =================
+    async function logUserVisit() {
+        try {
+            // Получаем IP через внешний сервис
+            let ip = 'unknown';
+            try {
+                const ipRes = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipRes.json();
+                ip = ipData.ip;
+            } catch (e) {
+                console.log('Не удалось получить IP');
+            }
+            
+            const userAgent = navigator.userAgent;
+            const device = getDeviceType();
+            
+            await loginsRef.push({
+                ip: ip,
+                userAgent: userAgent,
+                device: device,
+                timestamp: Date.now(),
+                url: window.location.href
+            });
+        } catch (err) {
+            console.error('Ошибка логирования:', err);
+        }
+    }
+
+    function getDeviceType() {
+        const ua = navigator.userAgent;
+        if (/tablet|ipad|playbook|silk|(android(?!.*mobi))/i.test(ua)) return 'Планшет';
+        if (/mobi|android|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua)) return 'Мобильный';
+        return 'Компьютер';
+    }
+
+    async function loadLogins() {
+        const tbody = document.getElementById('loginsTableBody');
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:15px;">Загрузка...</td></tr>';
+        
+        try {
+            const snapshot = await loginsRef.orderByChild('timestamp').limitToLast(50).once('value');
+            const logs = [];
+            snapshot.forEach(child => {
+                logs.unshift({ id: child.key, ...child.val() });
+            });
+            
+            document.getElementById('logCount').textContent = `(${logs.length})`;
+            
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:15px;">Нет записей</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = logs.map(log => {
+                const time = log.timestamp ? new Date(log.timestamp).toLocaleString('ru-RU') : '—';
+                const ip = log.ip || '—';
+                const device = log.device || '—';
+                return `<tr><td class="log-time">${time}</td><td>${ip}</td><td>${device}</td></tr>`;
+            }).join('');
+        } catch (err) {
+            console.error(err);
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--danger);padding:15px;">Ошибка загрузки</td></tr>';
+        }
+    }
+
+    function refreshLogins() {
+        loadLogins();
+        showToast('🔄 Логи обновлены');
+    }
+
+    async function clearLogins() {
+        if (!confirm('🗑️ Удалить ВСЕ записи о входах? Это действие нельзя отменить.')) return;
+        try {
+            await loginsRef.remove();
+            showToast('✅ Логи очищены');
+            loadLogins();
+        } catch (err) {
+            console.error(err);
+            showToast('Ошибка очистки', 'error');
+        }
+    }
+
+    // ================= ЗАГРУЗКА ДОКУМЕНТОВ =================
+    function loadDocuments() {
+        showLoading(true);
+        docsRef.once('value')
+            .then(snapshot => {
+                allDocs = [];
+                snapshot.forEach(child => {
+                    allDocs.push({ id: child.key, ...child.val() });
+                });
+                allDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                renderTable(allDocs);
+                updateStats();
+                updateJudgesDatalist();
+                showLoading(false);
+            })
+            .catch(err => {
+                console.error('Ошибка загрузки:', err);
+                showToast('Не удалось загрузить документы', 'error');
+                showLoading(false);
+            });
+        
+        docsRef.on('child_added', syncDocument);
+        docsRef.on('child_changed', syncDocument);
+        docsRef.on('child_removed', syncDocument);
+    }
+
+    function syncDocument(snapshot) {
+        const id = snapshot.key;
+        const data = snapshot.val();
+        const index = allDocs.findIndex(d => d.id === id);
+        if (index >= 0) {
+            allDocs[index] = { id, ...data };
+        } else {
+            allDocs.push({ id, ...data });
+        }
+        allDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        renderTable(allDocs);
+        updateStats();
+    }
+
+    // ================= ОТРИСОВКА ТАБЛИЦЫ =================
+    function renderTable(docs) {
+        const tbody = document.getElementById('tableBody');
+        if (docs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">📭 Документы не найдены</td></tr>';
+            return;
+        }
+        tbody.innerHTML = docs.map(doc => {
+            const date = doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('ru-RU') : '—';
+            return `
+                <tr ondblclick="editDocument('${doc.id}')" style="cursor: pointer;">
+                    <td><strong>${escapeHtml(doc.title)}</strong></td>
+                    <td>${escapeHtml(doc.judge)}</td>
+                    <td>
+                        ${doc.fileUrl ? 
+                            `<a href="${doc.fileUrl}" target="_blank" class="file-link">📥 ${escapeHtml(doc.fileName || 'Файл')}</a>` : 
+                            '❌ Нет файла'}
+                    </td>
+                    <td>${date}</td>
+                    <td class="actions no-print">
+                        <button class="action-btn edit" onclick="event.stopPropagation(); editDocument('${doc.id}')">✏️</button>
+                        <button class="action-btn delete" onclick="event.stopPropagation(); deleteDocument('${doc.id}')">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        document.getElementById('foundCount').textContent = docs.length;
+    }
+
+    // ================= ПОИСК И ФИЛЬТРЫ =================
+    function performSearch() {
+        const query = document.getElementById('searchInput').value.toLowerCase().trim();
+        if (!query) { renderTable(allDocs); return; }
+        const filtered = allDocs.filter(doc => 
+            (doc.judge && doc.judge.toLowerCase().includes(query)) ||
+            (doc.title && doc.title.toLowerCase().includes(query))
+        );
+        renderTable(filtered);
+        showToast(`Найдено: ${filtered.length}`, 'warning');
+    }
+
+    function resetSearch() {
+        document.getElementById('searchInput').value = '';
+        renderTable(allDocs);
+    }
+
+    function filterByMonth() {
+        const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const filtered = allDocs.filter(doc => (doc.createdAt || 0) >= monthAgo);
+        renderTable(filtered);
+        showToast(`Показаны документы за месяц: ${filtered.length}`, 'warning');
+    }
+
+    document.getElementById('searchInput').addEventListener('keypress', e => {
+        if (e.key === 'Enter') performSearch();
+    });
+
+    // ================= МОДАЛЬНОЕ ОКНО И ВКЛАДКИ =================
+    function switchTab(tabName) {
+        // Переключаем кнопки вкладок
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        // Переключаем контент
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        // Если открыли админку — загружаем логи
+        if (tabName === 'admin') {
+            loadLogins();
+        }
+    }
+
+    function openModal(tab = 'addDoc', isEdit = false, doc = null) {
+        // Переключаем на нужную вкладку
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        if (tab === 'admin') {
+            document.querySelectorAll('.tab-btn')[1].classList.add('active');
+            document.getElementById('tab-admin').classList.add('active');
+            loadLogins();
+        } else {
+            document.querySelectorAll('.tab-btn')[0].classList.add('active');
+            document.getElementById('tab-addDoc').classList.add('active');
+            // Заполняем форму для редактирования
+            document.getElementById('modalTitle').textContent = isEdit ? '✏️ Редактировать документ' : '➕ Добавить приказ';
+            document.getElementById('editId').value = doc?.id || '';
+            document.getElementById('docTitle').value = doc?.title || '';
+            document.getElementById('docJudge').value = doc?.judge || '';
+            document.getElementById('docFile').value = '';
+            document.getElementById('fileGroup').style.display = isEdit ? 'none' : 'block';
+            document.getElementById('modalStatus').textContent = '';
+            document.getElementById('docTitle').focus();
+        }
+        document.getElementById('mainModal').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('mainModal').classList.remove('active');
+    }
+
+    // ================= СОХРАНЕНИЕ ДОКУМЕНТА =================
+    async function saveDocument() {
+        const title = document.getElementById('docTitle').value.trim();
+        const judge = document.getElementById('docJudge').value.trim();
+        const fileInput = document.getElementById('docFile');
+        const editId = document.getElementById('editId').value;
+        const statusEl = document.getElementById('modalStatus');
+
+        if (!title || !judge) {
+            statusEl.textContent = '❌ Заполните все обязательные поля';
+            statusEl.style.color = 'var(--danger)';
+            return;
+        }
+
+        statusEl.textContent = '⏳ Сохранение...';
+        statusEl.style.color = 'var(--text)';
+
+        try {
+            let fileUrl = null, fileName = null;
+            if (!editId || fileInput.files[0]) {
+                if (!fileInput.files[0]) throw new Error('Выберите файл Word');
+                const file = fileInput.files[0];
+                if (!file.name.match(/\.(doc|docx)$/i)) throw new Error('Только файлы .doc или .docx');
+                const fileRef = storageRef.child(Date.now() + '_' + file.name);
+                await fileRef.put(file);
+                fileUrl = await fileRef.getDownloadURL();
+                fileName = file.name;
+            }
+
+            const docData = { title, judge, updatedAt: Date.now() };
+            if (fileUrl) { docData.fileUrl = fileUrl; docData.fileName = fileName; }
+            if (!editId) docData.createdAt = Date.now();
+
+            if (editId) {
+                await docsRef.child(editId).update(docData);
+                showToast('✅ Документ обновлён');
+            } else {
+                await docsRef.push(docData);
+                showToast('✅ Документ добавлен');
+            }
+            closeModal();
+        } catch (err) {
+            console.error(err);
+            statusEl.textContent = '❌ Ошибка: ' + err.message;
+            statusEl.style.color = 'var(--danger)';
+            showToast('Ошибка: ' + err.message, 'error');
+        }
+    }
+
+    // ================= УДАЛЕНИЕ И РЕДАКТИРОВАНИЕ =================
+    function deleteDocument(id) {
+        if (!confirm('🗑️ Удалить этот документ?')) return;
+        docsRef.child(id).remove()
+            .then(() => showToast('✅ Документ удалён'))
+            .catch(err => { console.error(err); showToast('Ошибка удаления', 'error'); });
+    }
+
+    function editDocument(id) {
+        const doc = allDocs.find(d => d.id === id);
+        if (!doc) return;
+        openModal('addDoc', true, doc);
+    }
+
+    // ================= ЭКСПОРТ И ВСПОМОГАТЕЛЬНЫЕ =================
+    function exportToCSV() {
+        if (allDocs.length === 0) { showToast('Нет данных для экспорта', 'warning'); return; }
+        const headers = ['Название','Судья','Файл','Дата','Ссылка'];
+        const rows = allDocs.map(doc => [
+            `"${(doc.title||'').replace(/"/g,'""')}"`,
+            `"${(doc.judge||'').replace(/"/g,'""')}"`,
+            `"${doc.fileName||''}"`,
+            doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('ru-RU') : '',
+            doc.fileUrl||''
+        ]);
+        const csv = [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
+        const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `документы_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('📥 Список скачан');
+    }
+
+    function updateStats() {
+        document.getElementById('totalCount').textContent = allDocs.length;
+        const judges = [...new Set(allDocs.map(d=>d.judge).filter(Boolean))];
+        document.getElementById('judgesCount').textContent = judges.length;
+    }
+
+    function updateJudgesDatalist() {
+        const datalist = document.getElementById('judgesList');
+        const judges = [...new Set(allDocs.map(d=>d.judge).filter(Boolean))].sort();
+        datalist.innerHTML = judges.map(j=>`<option value="${escapeHtml(j)}">`).join('');
+    }
+
+    function toggleTheme() {
+        isDarkMode = !isDarkMode;
+        document.documentElement.setAttribute('data-theme', isDarkMode?'dark':'light');
+        localStorage.setItem('theme', isDarkMode?'dark':'light');
+        showToast(isDarkMode?'🌙 Тёмная тема':'☀️ Светлая тема');
+    }
+
+    function showToast(msg, type='success') {
+        const t = document.createElement('div');
+        t.className = `toast ${type}`;
+        t.textContent = msg;
+        document.getElementById('toastContainer').appendChild(t);
+        setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(100%)';setTimeout(()=>t.remove(),300)},3000);
+    }
+
+    function showLoading(show) {
+        const tbody = document.getElementById('tableBody');
+        if(show && !tbody.querySelector('.loading')) {
+            tbody.innerHTML = '<tr><td colspan="5" class="loading"><span class="loading-spinner"></span>Загрузка...</td></tr>';
+        }
+    }
+
+    function escapeHtml(t){if(!t)return'';const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+
+    // ================= ГОРЯЧИЕ КЛАВИШИ (СКРЫТЫЕ) =================
+    function setupHotkeys() {
+        document.addEventListener('keydown', e => {
+            if(e.key==='F2' && !document.getElementById('mainModal').classList.contains('active')) {
+                e.preventDefault(); openModal('addDoc');
+            }
+            if(e.key==='F3') { e.preventDefault(); document.getElementById('searchInput').focus(); document.getElementById('searchInput').select(); }
+            if(e.key==='F5') { e.preventDefault(); loadDocuments(); showToast('🔄 Обновлено'); }
+            if(e.key==='F12') { e.preventDefault(); toggleTheme(); }
+            if(e.key==='Escape') closeModal();
+            if(e.key==='Enter' && e.ctrlKey && document.getElementById('mainModal').classList.contains('active')) {
+                e.preventDefault(); if(document.getElementById('tab-addDoc').classList.contains('active')) saveDocument();
+            }
+        });
+    }
+
+    document.getElementById('mainModal').addEventListener('click', e=>{ if(e.target.id==='mainModal') closeModal(); });
+</script>
+
+</body>
+</html>
