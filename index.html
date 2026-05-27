@@ -210,7 +210,6 @@
 <div class="header no-print">
     <h1>⚖️ Все документы в суд!</h1>
     <div class="controls">
-        <button class="btn btn-outline" onclick="toggleTheme()">🌓</button>
         <button class="btn btn-success" onclick="exportToCSV()">📥 Excel</button>
         <button class="btn" onclick="window.print()">🖨️</button>
     </div>
@@ -338,18 +337,12 @@
     };
     // =====================================================
 
-    // Глобальные переменные
     let db, storage, docsRef, statusRef, loginsRef, storageRef;
     let allDocs = [];
     let siteEnabled = true;
-    let isDarkMode = localStorage.getItem('theme') === 'dark';
     let firebaseReady = false;
 
-    // ================= ИНИЦИАЛИЗАЦИЯ =================
     document.addEventListener('DOMContentLoaded', async () => {
-        if (isDarkMode) document.documentElement.setAttribute('data-theme', 'dark');
-        
-        // Инициализация Firebase с обработкой ошибок
         try {
             firebase.initializeApp(firebaseConfig);
             db = firebase.database();
@@ -362,15 +355,9 @@
             updateConnectionStatus('ready', '✅ Подключено к базе');
         } catch (err) {
             console.error('❌ Ошибка Firebase:', err);
-            updateConnectionStatus('error', '❌ Ошибка подключения к базе');
-            // Показываем пустую таблицу, чтобы интерфейс не висел
-            renderTable([]);
-            document.getElementById('totalCount').textContent = '0';
-            document.getElementById('foundCount').textContent = '0';
-            document.getElementById('judgesCount').textContent = '0';
+            updateConnectionStatus('error', '❌ Ошибка подключения');
         }
-        
-        // Инициализация статуса сайта
+
         if (firebaseReady) {
             await initSiteStatus();
             if (!siteEnabled) {
@@ -379,381 +366,306 @@
             } else {
                 loadDocuments();
             }
+            logUserVisit();
         } else {
-            // Если Firebase не подключился, показываем пустую таблицу
             renderTable([]);
         }
         
         setupHotkeys();
         if (firebaseReady) updateJudgesDatalist();
-        
-        // Логирование входа
-        if (firebaseReady && siteEnabled) {
-            logUserVisit();
-        }
     });
 
-    // ================= СТАТУС ПОДКЛЮЧЕНИЯ =================
-    function updateConnectionStatus(type, message) {
+    function updateConnectionStatus(type, msg) {
         const el = document.getElementById('connectionStatus');
         el.className = `connection-status show ${type}`;
-        el.textContent = message;
-        // Скрыть через 3 секунды если успешно
-        if (type === 'ready') {
-            setTimeout(() => { el.classList.remove('show'); }, 3000);
-        }
+        el.textContent = msg;
+        if (type === 'ready') setTimeout(() => el.classList.remove('show'), 3000);
     }
 
-    // ================= СТАТУС САЙТА =================
     async function initSiteStatus() {
-        if (!firebaseReady) return;
         try {
-            const snapshot = await statusRef.once('value');
-            const data = snapshot.val();
-            if (data && typeof data.enabled === 'boolean') {
-                siteEnabled = data.enabled;
-            } else {
-                await statusRef.set({ enabled: true, updatedAt: Date.now() });
-                siteEnabled = true;
-            }
+            const snap = await statusRef.once('value');
+            const data = snap.val();
+            siteEnabled = data && typeof data.enabled === 'boolean' ? data.enabled : true;
+            if (!snap.exists()) await statusRef.set({ enabled: true, updatedAt: Date.now() });
             updateSiteStatusUI();
-            statusRef.on('value', snap => {
-                const val = snap.val();
-                if (val && typeof val.enabled === 'boolean') {
-                    siteEnabled = val.enabled;
+            statusRef.on('value', s => {
+                const v = s.val();
+                if (v && typeof v.enabled === 'boolean') {
+                    siteEnabled = v.enabled;
                     updateSiteStatusUI();
                     if (!siteEnabled) {
                         document.getElementById('maintenanceScreen').classList.add('active');
                         document.getElementById('mainContent').style.display = 'none';
+                    } else {
+                        document.getElementById('maintenanceScreen').classList.remove('active');
+                        document.getElementById('mainContent').style.display = 'block';
                     }
                 }
             });
-        } catch (err) {
-            console.error('Ошибка статуса:', err);
-            siteEnabled = true;
-            updateSiteStatusUI();
-        }
+        } catch (err) { siteEnabled = true; updateSiteStatusUI(); }
     }
 
     function updateSiteStatusUI() {
-        const badge = document.getElementById('siteStatusBadge');
-        const text = document.getElementById('siteStatusText');
-        const toggle = document.getElementById('siteEnabledToggle');
-        if (siteEnabled) {
-            badge.className = 'status-badge status-online';
-            text.textContent = 'Онлайн';
-            toggle.checked = true;
-        } else {
-            badge.className = 'status-badge status-offline';
-            text.textContent = 'На обслуживании';
-            toggle.checked = false;
-        }
+        const b = document.getElementById('siteStatusBadge');
+        const t = document.getElementById('siteStatusText');
+        const c = document.getElementById('siteEnabledToggle');
+        b.className = siteEnabled ? 'status-badge status-online' : 'status-badge status-offline';
+        t.textContent = siteEnabled ? 'Онлайн' : 'На обслуживании';
+        c.checked = siteEnabled;
     }
 
     async function toggleSiteStatus() {
-        if (!firebaseReady) { showToast('❌ Нет подключения к базе', 'error'); return; }
+        if (!firebaseReady) return showToast('❌ Нет подключения', 'error');
         const newState = document.getElementById('siteEnabledToggle').checked;
         try {
-            await statusRef.update({ enabled: newState, updatedAt: Date.now(), updatedBy: 'admin' });
+            await statusRef.update({ enabled: newState, updatedAt: Date.now() });
             showToast(newState ? '✅ Сайт включён' : '🚫 Сайт отключён');
         } catch (err) {
-            console.error(err);
-            showToast('Ошибка обновления статуса', 'error');
+            showToast('Ошибка обновления', 'error');
             document.getElementById('siteEnabledToggle').checked = !newState;
         }
     }
 
-    // ================= ЛОГИРОВАНИЕ ВХОДОВ =================
     async function logUserVisit() {
         if (!firebaseReady) return;
         try {
             let ip = 'unknown';
-            try {
-                const ipRes = await fetch('https://api.ipify.org?format=json', { mode: 'cors' });
-                const ipData = await ipRes.json();
-                ip = ipData.ip;
-            } catch (e) { console.log('IP не получен'); }
-            const userAgent = navigator.userAgent;
-            const device = getDeviceType();
-            await loginsRef.push({ ip, userAgent, device, timestamp: Date.now(), url: window.location.href });
-        } catch (err) { console.error('Ошибка логирования:', err); }
-    }
-
-    function getDeviceType() {
-        const ua = navigator.userAgent;
-        if (/tablet|ipad|playbook|silk|(android(?!.*mobi))/i.test(ua)) return 'Планшет';
-        if (/mobi|android|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua)) return 'Мобильный';
-        return 'Компьютер';
+            try { ip = (await fetch('https://api.ipify.org?format=json').then(r=>r.json())).ip; } catch(e){}
+            const dev = /mobi|android|iphone/i.test(navigator.userAgent) ? 'Мобильный' : 
+                        /tablet|ipad/i.test(navigator.userAgent) ? 'Планшет' : 'Компьютер';
+            await loginsRef.push({ ip, device: dev, timestamp: Date.now() });
+        } catch(e) {}
     }
 
     async function loadLogins() {
-        if (!firebaseReady) {
-            document.getElementById('loginsTableBody').innerHTML = '<tr><td colspan="3" style="text-align:center;padding:15px;color:var(--danger)">Нет подключения</td></tr>';
-            return;
-        }
-        const tbody = document.getElementById('loginsTableBody');
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:15px;">Загрузка...</td></tr>';
+        const tb = document.getElementById('loginsTableBody');
+        tb.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:15px;">Загрузка...</td></tr>';
         try {
-            const snapshot = await loginsRef.orderByChild('timestamp').limitToLast(50).once('value');
-            const logs = [];
-            snapshot.forEach(child => { logs.unshift({ id: child.key, ...child.val() }); });
+            const snap = await loginsRef.orderByChild('timestamp').limitToLast(50).once('value');
+            const logs = []; snap.forEach(c => logs.unshift({id:c.key, ...c.val()}));
             document.getElementById('logCount').textContent = `(${logs.length})`;
-            if (logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:15px;">Нет записей</td></tr>';
-                return;
-            }
-            tbody.innerHTML = logs.map(log => {
-                const time = log.timestamp ? new Date(log.timestamp).toLocaleString('ru-RU') : '—';
-                return `<tr><td class="log-time">${time}</td><td>${log.ip||'—'}</td><td>${log.device||'—'}</td></tr>`;
-            }).join('');
-        } catch (err) {
-            console.error(err);
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--danger);padding:15px;">Ошибка</td></tr>';
-        }
+            tb.innerHTML = logs.length ? logs.map(l => 
+                `<tr><td class="log-time">${new Date(l.timestamp||Date.now()).toLocaleString('ru-RU')}</td><td>${l.ip||'—'}</td><td>${l.device||'—'}</td></tr>`
+            ).join('') : '<tr><td colspan="3" style="text-align:center;padding:15px;">Нет записей</td></tr>';
+        } catch(e) { tb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--danger);padding:15px;">Ошибка</td></tr>'; }
     }
-
     function refreshLogins() { loadLogins(); showToast('🔄 Логи обновлены'); }
     async function clearLogins() {
-        if (!firebaseReady) { showToast('❌ Нет подключения', 'error'); return; }
-        if (!confirm('🗑️ Удалить ВСЕ записи?')) return;
-        try {
-            await loginsRef.remove();
-            showToast('✅ Логи очищены');
-            loadLogins();
-        } catch (err) { console.error(err); showToast('Ошибка очистки', 'error'); }
+        if(!confirm('🗑️ Удалить ВСЕ записи?')) return;
+        try { await loginsRef.remove(); showToast('✅ Очищено'); loadLogins(); } catch(e) { showToast('Ошибка', 'error'); }
     }
 
-    // ================= ЗАГРУЗКА ДОКУМЕНТОВ (БЫСТРАЯ) =================
     function loadDocuments() {
-        if (!firebaseReady) {
-            renderTable([]);
-            updateStats();
-            return;
-        }
+        if(!firebaseReady) { renderTable([]); updateStats(); return; }
         updateConnectionStatus('connecting', '🔄 Загрузка документов...');
+        const timeout = setTimeout(() => { renderTable(allDocs); updateStats(); updateConnectionStatus('ready', '✅ Показаны доступные'); }, 4000);
         
-        // Таймаут 3 секунды - если дольше, показываем что есть
-        const timeoutPromise = new Promise(resolve => setTimeout(() => {
-            console.warn('⚠️ Таймаут загрузки, показываем что есть');
-            renderTable(allDocs);
-            updateStats();
-            updateConnectionStatus('ready', '✅ Показаны доступные данные');
-            resolve();
-        }, 3000));
-        
-        const loadPromise = docsRef.once('value').then(snapshot => {
+        docsRef.once('value').then(snap => {
+            clearTimeout(timeout);
             allDocs = [];
-            if (snapshot.exists()) {
-                snapshot.forEach(child => { allDocs.push({ id: child.key, ...child.val() }); });
+            if(snap.exists()) snap.forEach(c => allDocs.push({id:c.key, ...c.val()}));
+            allDocs.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+            
+            // Авто-добавление образца если пусто
+            if(allDocs.length === 0) {
+                seedSampleDocument();
+            } else {
+                renderTable(allDocs); updateStats(); updateJudgesDatalist();
+                updateConnectionStatus('ready', `✅ Загружено: ${allDocs.length}`);
+                setTimeout(()=>document.getElementById('connectionStatus').classList.remove('show'), 2000);
             }
-            allDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            renderTable(allDocs);
-            updateStats();
-            updateJudgesDatalist();
-            updateConnectionStatus('ready', `✅ Загружено: ${allDocs.length}`);
-            // Скрыть статус через 2 сек
-            setTimeout(() => { document.getElementById('connectionStatus').classList.remove('show'); }, 2000);
         }).catch(err => {
-            console.error('Ошибка загрузки:', err);
-            showToast('⚠️ Работаем в офлайн-режиме', 'warning');
+            clearTimeout(timeout);
+            showToast('⚠️ Ошибка загрузки', 'warning');
             renderTable(allDocs);
-            updateConnectionStatus('error', '⚠️ Ошибка загрузки, показываем кэш');
         });
         
-        // Подписка на изменения
-        docsRef.on('child_added', syncDocument);
-        docsRef.on('child_changed', syncDocument);
-        docsRef.on('child_removed', syncDocument);
-        
-        // Ждём либо данные, либо таймаут
-        Promise.race([loadPromise, timeoutPromise]);
+        docsRef.on('child_added', syncDoc);
+        docsRef.on('child_changed', syncDoc);
+        docsRef.on('child_removed', syncDoc);
     }
 
-    function syncDocument(snapshot) {
-        const id = snapshot.key;
-        const data = snapshot.val();
-        const index = allDocs.findIndex(d => d.id === id);
-        if (index >= 0) { allDocs[index] = { id, ...data }; }
-        else { allDocs.push({ id, ...data }); }
-        allDocs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        renderTable(allDocs);
-        updateStats();
+    async function seedSampleDocument() {
+        try {
+            await docsRef.push({
+                title: 'Образец искового заявления',
+                judge: 'Сафрюк В.В',
+                fileName: 'образец_заявления.docx',
+                fileUrl: '#',
+                createdAt: Date.now(), updatedAt: Date.now()
+            });
+            showToast('📄 Добавлен образец документа');
+            setTimeout(loadDocuments, 500);
+        } catch(e) { renderTable([]); }
     }
 
-    // ================= ОТРИСОВКА ТАБЛИЦЫ =================
+    function syncDoc(snap) {
+        const id = snap.key, data = snap.val();
+        const i = allDocs.findIndex(d=>d.id===id);
+        if(i>=0) allDocs[i] = {id, ...data}; else allDocs.push({id, ...data});
+        allDocs.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+        renderTable(allDocs); updateStats();
+    }
+
     function renderTable(docs) {
-        const tbody = document.getElementById('tableBody');
-        if (!docs || docs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">📭 Документы не найдены</td></tr>';
-            document.getElementById('foundCount').textContent = '0';
-            return;
+        const tb = document.getElementById('tableBody');
+        if(!docs || docs.length===0) {
+            tb.innerHTML = '<tr><td colspan="5" class="empty-state">📭 Документы не найдены</td></tr>';
+            document.getElementById('foundCount').textContent = '0'; return;
         }
-        tbody.innerHTML = docs.map(doc => {
+        tb.innerHTML = docs.map(doc => {
             const date = doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('ru-RU') : '—';
-            return `
-                <tr ondblclick="editDocument('${doc.id}')" style="cursor: pointer;">
-                    <td><strong>${escapeHtml(doc.title)}</strong></td>
-                    <td>${escapeHtml(doc.judge)}</td>
-                    <td>${doc.fileUrl ? `<a href="${doc.fileUrl}" target="_blank" class="file-link">📥 ${escapeHtml(doc.fileName||'Файл')}</a>` : '❌ Нет файла'}</td>
-                    <td>${date}</td>
-                    <td class="actions no-print">
-                        <button class="action-btn edit" onclick="event.stopPropagation(); editDocument('${doc.id}')">✏️</button>
-                        <button class="action-btn delete" onclick="event.stopPropagation(); deleteDocument('${doc.id}')">🗑️</button>
-                    </td>
-                </tr>`;
+            return `<tr ondblclick="editDocument('${doc.id}')" style="cursor:pointer;">
+                <td><strong>${escapeHtml(doc.title)}</strong></td>
+                <td>${escapeHtml(doc.judge)}</td>
+                <td>${doc.fileUrl && doc.fileUrl!=='#' ? `<a href="${doc.fileUrl}" target="_blank" class="file-link">📥 ${escapeHtml(doc.fileName||'Файл')}</a>` : '❌ Нет файла'}</td>
+                <td>${date}</td>
+                <td class="actions no-print">
+                    <button class="action-btn edit" onclick="event.stopPropagation();editDocument('${doc.id}')">✏️</button>
+                    <button class="action-btn delete" onclick="event.stopPropagation();deleteDocument('${doc.id}')">🗑️</button>
+                </td>
+            </tr>`;
         }).join('');
         document.getElementById('foundCount').textContent = docs.length;
     }
 
-    // ================= ПОИСК И ФИЛЬТРЫ =================
     function performSearch() {
-        const query = document.getElementById('searchInput').value.toLowerCase().trim();
-        if (!query) { renderTable(allDocs); return; }
-        const filtered = allDocs.filter(doc => 
-            (doc.judge && doc.judge.toLowerCase().includes(query)) ||
-            (doc.title && doc.title.toLowerCase().includes(query))
-        );
-        renderTable(filtered);
-        showToast(`Найдено: ${filtered.length}`, 'warning');
+        const q = document.getElementById('searchInput').value.toLowerCase().trim();
+        renderTable(q ? allDocs.filter(d=>(d.judge||'').toLowerCase().includes(q)||(d.title||'').toLowerCase().includes(q)) : allDocs);
+        if(q) showToast(`Найдено: ${allDocs.filter(d=>(d.judge||'').toLowerCase().includes(q)||(d.title||'').toLowerCase().includes(q)).length}`, 'warning');
     }
-    function resetSearch() { document.getElementById('searchInput').value = ''; renderTable(allDocs); }
+    function resetSearch() { document.getElementById('searchInput').value=''; renderTable(allDocs); }
     function filterByMonth() {
-        const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-        const filtered = allDocs.filter(doc => (doc.createdAt || 0) >= monthAgo);
-        renderTable(filtered);
-        showToast(`За месяц: ${filtered.length}`, 'warning');
+        const m = Date.now() - 30*24*60*60*1000;
+        const f = allDocs.filter(d=>(d.createdAt||0)>=m);
+        renderTable(f); showToast(`За месяц: ${f.length}`, 'warning');
     }
-    document.getElementById('searchInput').addEventListener('keypress', e => { if (e.key === 'Enter') performSearch(); });
+    document.getElementById('searchInput').addEventListener('keypress', e=>{if(e.key==='Enter')performSearch();});
 
-    // ================= МОДАЛКА И ВКЛАДКИ =================
-    function switchTab(tabName) {
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.getElementById(`tab-${tabName}`).classList.add('active');
-        if (tabName === 'admin') loadLogins();
+    function switchTab(name) {
+        document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active', i===(name==='addDoc'?0:1)));
+        document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+        document.getElementById(`tab-${name}`).classList.add('active');
+        if(name==='admin') loadLogins();
     }
-    function openModal(tab = 'addDoc', isEdit = false, doc = null) {
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        if (tab === 'admin') {
-            document.querySelectorAll('.tab-btn')[1].classList.add('active');
-            document.getElementById('tab-admin').classList.add('active');
-            loadLogins();
-        } else {
-            document.querySelectorAll('.tab-btn')[0].classList.add('active');
-            document.getElementById('tab-addDoc').classList.add('active');
+
+    function openModal(tab='addDoc', isEdit=false, doc=null) {
+        switchTab(tab);
+        document.getElementById('mainModal').classList.add('active');
+        if(tab==='addDoc') {
             document.getElementById('modalTitle').textContent = isEdit ? '✏️ Редактировать' : '➕ Добавить';
-            document.getElementById('editId').value = doc?.id || '';
-            document.getElementById('docTitle').value = doc?.title || '';
-            document.getElementById('docJudge').value = doc?.judge || '';
+            document.getElementById('editId').value = doc?.id||'';
+            document.getElementById('docTitle').value = doc?.title||'';
+            document.getElementById('docJudge').value = doc?.judge||'';
             document.getElementById('docFile').value = '';
             document.getElementById('fileGroup').style.display = isEdit ? 'none' : 'block';
             document.getElementById('modalStatus').textContent = '';
             document.getElementById('docTitle').focus();
         }
-        document.getElementById('mainModal').classList.add('active');
     }
     function closeModal() { document.getElementById('mainModal').classList.remove('active'); }
 
-    // ================= СОХРАНЕНИЕ =================
     async function saveDocument() {
-        if (!firebaseReady) { showToast('❌ Нет подключения к базе', 'error'); return; }
+        if(!firebaseReady) return showToast('❌ Нет подключения', 'error');
         const title = document.getElementById('docTitle').value.trim();
         const judge = document.getElementById('docJudge').value.trim();
         const fileInput = document.getElementById('docFile');
         const editId = document.getElementById('editId').value;
         const statusEl = document.getElementById('modalStatus');
-        if (!title || !judge) { statusEl.textContent = '❌ Заполните поля'; statusEl.style.color = 'var(--danger)'; return; }
+        const btn = event.target.closest('.btn-success');
+        
+        if(!title||!judge) { statusEl.textContent='❌ Заполните поля'; statusEl.style.color='var(--danger)'; return; }
+        if(!editId && (!fileInput.files.length)) { statusEl.textContent='❌ Выберите файл'; statusEl.style.color='var(--danger)'; return; }
+
         statusEl.textContent = '⏳ Сохранение...'; statusEl.style.color = 'var(--text)';
+        btn.disabled = true;
+
         try {
             let fileUrl = null, fileName = null;
-            if (!editId || fileInput.files[0]) {
-                if (!fileInput.files[0]) throw new Error('Выберите файл');
+            if(!editId && fileInput.files.length) {
                 const file = fileInput.files[0];
-                if (!file.name.match(/\.(doc|docx)$/i)) throw new Error('Только .doc/.docx');
-                const fileRef = storageRef.child(Date.now() + '_' + file.name);
-                await fileRef.put(file);
-                fileUrl = await fileRef.getDownloadURL();
+                if(!file.name.match(/\.(doc|docx)$/i)) throw new Error('Только .doc/.docx');
+                const ref = storageRef.child(Date.now()+'_'+file.name);
+                const snap = await Promise.race([
+                    ref.put(file),
+                    new Promise((_,rej)=>setTimeout(()=>rej(new Error('Таймаут загрузки (10 сек)')), 10000))
+                ]);
+                fileUrl = await snap.ref.getDownloadURL();
                 fileName = file.name;
             }
-            const docData = { title, judge, updatedAt: Date.now() };
-            if (fileUrl) { docData.fileUrl = fileUrl; docData.fileName = fileName; }
-            if (!editId) docData.createdAt = Date.now();
-            if (editId) { await docsRef.child(editId).update(docData); showToast('✅ Обновлён'); }
-            else { await docsRef.push(docData); showToast('✅ Добавлен'); }
-            closeModal(); loadDocuments();
-        } catch (err) {
+
+            const data = { title, judge, updatedAt: Date.now() };
+            if(fileUrl) { data.fileUrl = fileUrl; data.fileName = fileName; }
+            if(!editId) data.createdAt = Date.now();
+
+            if(editId) await docsRef.child(editId).update(data);
+            else await docsRef.push(data);
+
+            showToast(editId ? '✅ Обновлён' : '✅ Добавлен');
+            closeModal();
+            loadDocuments();
+        } catch(err) {
             console.error(err);
             statusEl.textContent = '❌ ' + err.message;
             statusEl.style.color = 'var(--danger)';
             showToast('Ошибка: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
         }
     }
 
-    // ================= УДАЛЕНИЕ / РЕДАКТИРОВАНИЕ =================
     function deleteDocument(id) {
-        if (!firebaseReady) { showToast('❌ Нет подключения', 'error'); return; }
-        if (!confirm('🗑️ Удалить?')) return;
-        docsRef.child(id).remove().then(() => { showToast('✅ Удалён'); }).catch(err => { console.error(err); showToast('Ошибка', 'error'); });
+        if(!firebaseReady) return showToast('❌ Нет подключения', 'error');
+        if(!confirm('🗑️ Удалить документ?')) return;
+        docsRef.child(id).remove().then(()=>showToast('✅ Удалён')).catch(()=>showToast('Ошибка', 'error'));
     }
     function editDocument(id) {
-        const doc = allDocs.find(d => d.id === id);
-        if (!doc) return;
+        const doc = allDocs.find(d=>d.id===id);
+        if(!doc) return;
         openModal('addDoc', true, doc);
     }
 
-    // ================= ЭКСПОРТ / ВСПОМОГАТЕЛЬНЫЕ =================
     function exportToCSV() {
-        if (allDocs.length === 0) { showToast('Нет данных', 'warning'); return; }
-        const headers = ['Название','Судья','Файл','Дата','Ссылка'];
-        const rows = allDocs.map(doc => [
-            `"${(doc.title||'').replace(/"/g,'""')}"`, `"${(doc.judge||'').replace(/"/g,'""')}"`,
-            `"${doc.fileName||''}"`, doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('ru-RU') : '', doc.fileUrl||''
+        if(!allDocs.length) return showToast('Нет данных', 'warning');
+        const h = ['Название','Судья','Файл','Дата','Ссылка'];
+        const r = allDocs.map(d=>[
+            `"${(d.title||'').replace(/"/g,'""')}"`, `"${(d.judge||'').replace(/"/g,'""')}"`,
+            `"${d.fileName||''}"`, d.createdAt?new Date(d.createdAt).toLocaleDateString('ru-RU'):'', d.fileUrl||''
         ]);
-        const csv = [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
-        const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `документы_${new Date().toISOString().slice(0,10)}.csv`; a.click();
-        URL.revokeObjectURL(a.href); showToast('📥 Скачан');
+        const b = new Blob(['\uFEFF'+[h.join(','), ...r.map(x=>x.join(','))].join('\n')], {type:'text/csv;charset=utf-8;'});
+        const a = document.createElement('a'); a.href=URL.createObjectURL(b);
+        a.download=`документы_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+        showToast('📥 Скачан');
     }
+
     function updateStats() {
         document.getElementById('totalCount').textContent = allDocs.length;
-        const judges = [...new Set(allDocs.map(d=>d.judge).filter(Boolean))];
-        document.getElementById('judgesCount').textContent = judges.length;
+        document.getElementById('judgesCount').textContent = [...new Set(allDocs.map(d=>d.judge).filter(Boolean))].length;
     }
     function updateJudgesDatalist() {
-        const datalist = document.getElementById('judgesList');
-        const judges = [...new Set(allDocs.map(d=>d.judge).filter(Boolean))].sort();
-        datalist.innerHTML = judges.map(j=>`<option value="${escapeHtml(j)}">`).join('');
+        document.getElementById('judgesList').innerHTML = [...new Set(allDocs.map(d=>d.judge).filter(Boolean))].sort().map(j=>`<option value="${escapeHtml(j)}">`).join('');
     }
-    function toggleTheme() {
-        isDarkMode = !isDarkMode;
-        document.documentElement.setAttribute('data-theme', isDarkMode?'dark':'light');
-        localStorage.setItem('theme', isDarkMode?'dark':'light');
-        showToast(isDarkMode?'🌙 Тёмная':'☀️ Светлая');
-    }
-    function showToast(msg, type='success') {
-        const t = document.createElement('div'); t.className = `toast ${type}`; t.textContent = msg;
-        document.getElementById('toastContainer').appendChild(t);
-        setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(100%)';setTimeout(()=>t.remove(),300)},3000);
+    function showToast(m,t='success') {
+        const c=document.createElement('div'); c.className=`toast ${t}`; c.textContent=m;
+        document.getElementById('toastContainer').appendChild(c);
+        setTimeout(()=>{c.style.opacity='0';c.style.transform='translateX(100%)';setTimeout(()=>c.remove(),300)},3000);
     }
     function escapeHtml(t){if(!t)return'';const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 
-    // ================= ГОРЯЧИЕ КЛАВИШИ =================
     function setupHotkeys() {
         document.addEventListener('keydown', e => {
             if(e.key==='F2' && !document.getElementById('mainModal').classList.contains('active')) { e.preventDefault(); openModal('addDoc'); }
             if(e.key==='F3') { e.preventDefault(); document.getElementById('searchInput').focus(); document.getElementById('searchInput').select(); }
             if(e.key==='F5') { e.preventDefault(); loadDocuments(); showToast('🔄 Обновлено'); }
-            if(e.key==='F12') { e.preventDefault(); toggleTheme(); }
+            if(e.key==='F10') { e.preventDefault(); toggleSiteStatus(); } // <-- F10 вкл/выкл сайт
             if(e.key==='Escape') closeModal();
             if(e.key==='Enter' && e.ctrlKey && document.getElementById('mainModal').classList.contains('active')) {
                 e.preventDefault(); if(document.getElementById('tab-addDoc').classList.contains('active')) saveDocument();
             }
         });
     }
-    document.getElementById('mainModal').addEventListener('click', e=>{ if(e.target.id==='mainModal') closeModal(); });
+    document.getElementById('mainModal').addEventListener('click', e=>{if(e.target.id==='mainModal')closeModal();});
 </script>
 </body>
 </html>
